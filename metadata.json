@@ -1,0 +1,6 @@
+{
+  "name": "Nova Intel Report",
+  "description": "An advanced, premium, full-featured AI-enabled educational platform for engineering, computer science, programming, and technology learners.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
