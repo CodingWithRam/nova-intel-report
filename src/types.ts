@@ -156,13 +156,14 @@ export interface StudyMaterial {
   id: string;
   title: string;
   category: string;
-  type: 'pdf' | 'notes' | 'video' | 'link';
+  type: 'pdf' | 'notes' | 'video' | 'link' | 'PDF' | 'Notes' | 'Cheatsheet' | 'Paper';
   fileUrl?: string;
   externalUrl?: string;
+  downloadUrl?: string;
   fileSize?: string;
   description: string;
   author: string;
-  downloads: number;
+  downloads?: number;
   createdAt: string;
 }
 

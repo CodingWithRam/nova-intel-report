@@ -254,10 +254,15 @@ print("Hello, " + name)
     setCodeOutput('');
   }, [codeLang]);
 
-  // Simple Markdown to HTML Parser simulation for ultra-fast rendering
+  // Simple Markdown to HTML Parser with strict HTML escaping to prevent XSS
   const parseMarkdown = (md: string) => {
-    let html = md;
-    // Headings
+    // 1. Strictly escape raw HTML entities first to prevent malicious script injection
+    let html = md
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // 2. Headings
     html = html.replace(/^# (.*?)$/gm, '<h1 class="text-3xl font-bold text-zinc-900 dark:text-zinc-50 mt-4 mb-2">$1</h1>');
     html = html.replace(/^## (.*?)$/gm, '<h2 class="text-2xl font-semibold text-zinc-900 dark:text-zinc-50 mt-3 mb-2">$1</h2>');
     html = html.replace(/^### (.*?)$/gm, '<h3 class="text-xl font-semibold text-zinc-900 dark:text-zinc-50 mt-2 mb-1">$1</h3>');
@@ -406,6 +411,7 @@ print("Hello, " + name)
                       <iframe
                         title="Sandbox Output"
                         srcDoc={codeOutput}
+                        sandbox="allow-scripts"
                         referrerPolicy="no-referrer"
                         className="w-full h-full border-0 bg-white"
                       />

@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Compass, Search, Flame, Sun, Moon, Globe, BookMarked, User, Menu, X, BookOpen,
   Trophy, Play, CheckCircle, Calendar, ChevronRight, ChevronDown, Bookmark, History,
   Sparkles, Code, Award, Mail, Phone, MapPin, Printer, Heart, Share2, Send, Check,
   ExternalLink, Lock, Cpu, Layers, Terminal, BookOpenCheck, HelpCircle, GraduationCap,
-  Smartphone, Wand2
+  Smartphone, Wand2, Download, Paperclip, FileText, CheckCircle2
 } from 'lucide-react';
 
 import Header from './components/Header';
@@ -22,15 +22,68 @@ import AIStudioSuite from './components/AIStudioSuite';
 import PWAInstallModal from './components/PWAInstallModal';
 import OfflineIndicator from './components/OfflineIndicator';
 import MobileBottomNav from './components/MobileBottomNav';
+import CoAdminApplicationModal from './components/CoAdminApplicationModal';
 
 import { SUBCATEGORIES, getCourseForSubcategory, FEATURED_ARTICLES, CATEGORY_LABELS } from './data/courses';
 import { QUIZZES } from './data/quizzes';
 import { TRANSLATIONS } from './utils/translations';
-import { UserProfile, Bookmark as BookmarkType, ReadingHistory, Quiz, AuthUser } from './types';
+import { UserProfile, Bookmark as BookmarkType, ReadingHistory, Quiz, AuthUser, Course, Article, StudyMaterial } from './types';
 
 export default function App() {
   // --- Dynamic Quizzes State for AI-generated Quizzes ---
   const [allQuizzes, setAllQuizzes] = useState<Quiz[]>(QUIZZES);
+  const [serverCourses, setServerCourses] = useState<Course[]>([]);
+  const [serverArticles, setServerArticles] = useState<Article[]>([]);
+  const [serverQuizzes, setServerQuizzes] = useState<Quiz[]>([]);
+  const [serverMaterials, setServerMaterials] = useState<StudyMaterial[]>([]);
+  const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
+  const [materialsCategoryFilter, setMaterialsCategoryFilter] = useState('all');
+  const [materialsSearchQuery, setMaterialsSearchQuery] = useState('');
+
+  // Fetch all persisted database content
+  const fetchAllContent = async () => {
+    try {
+      const res = await fetch('/api/content/all');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.courses)) setServerCourses(data.courses);
+        if (Array.isArray(data.articles)) setServerArticles(data.articles);
+        if (Array.isArray(data.quizzes) && data.quizzes.length > 0) {
+          setServerQuizzes(data.quizzes);
+          setAllQuizzes(prev => {
+            const extra = data.quizzes.filter((dq: any) => !prev.some(p => p.id === dq.id));
+            return [...extra, ...prev];
+          });
+        }
+        if (Array.isArray(data.materials)) setServerMaterials(data.materials);
+      }
+    } catch (err) {
+      console.error('Error syncing database content:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchAllContent();
+  }, []);
+
+  // Merged Subcategories dynamically
+  const allSubcategories = useMemo(() => {
+    const dict: { [slug: string]: { name: string; parent: string; description: string } } = { ...SUBCATEGORIES };
+    serverCourses.forEach(c => {
+      dict[c.id] = {
+        name: c.title,
+        parent: c.category || 'engineering',
+        description: c.description
+      };
+    });
+    return dict;
+  }, [serverCourses]);
+
+  // Merged Articles dynamically
+  const allArticles = useMemo(() => {
+    const builtIn = FEATURED_ARTICLES.filter(fa => !serverArticles.some(sa => sa.id === fa.id));
+    return [...serverArticles, ...builtIn];
+  }, [serverArticles]);
 
   // --- 1. CORE THEMING & TRANSLATIONS ---
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -40,38 +93,14 @@ export default function App() {
     return localStorage.getItem('nova-lang') || 'en';
   });
 
-  // --- 2. USER PROFILE STATE & AUTHENTICATION ---
+  // --- 2. USER PROFILE STATE & AUTHENTICATION (Password Required - No Auto-Login) ---
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
     const saved = localStorage.getItem('nova-auth-user');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) {}
     }
-    // Default logged in as Super Admin RAM SAKAL!
-    return {
-      id: 'usr-super-admin',
-      name: 'RAM SAKAL',
-      email: 'rammilan.kumar7678@gmail.com',
-      role: 'super_admin',
-      status: 'active',
-      department: 'Executive Administration & Systems',
-      institution: 'Nova Intel HQ',
-      permissions: [
-        'manage_courses',
-        'manage_quizzes',
-        'review_students',
-        'manage_tools',
-        'view_analytics',
-        'view_logs',
-        'export_data',
-        'moderate_discussions'
-      ],
-      assignedBy: 'System Root (Chief Admin)',
-      createdAt: new Date().toISOString(),
-      lastLoginAt: new Date().toISOString(),
-      loginCount: 42,
-      isNameVisible: true,
-      publicTitle: 'Chief Administrator'
-    };
+    // No automatic bypass login for Super Chief Admin or anyone without password!
+    return null;
   });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
@@ -83,18 +112,37 @@ export default function App() {
     setUserProfile(prev => ({
       ...prev,
       name: updatedUser.name,
-      email: updatedUser.email
+      email: updatedUser.email,
+      role: updatedUser.role === 'super_admin' ? 'Super Admin' : updatedUser.role === 'co_admin' ? 'Co-Admin' : 'Student'
     }));
   };
 
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('nova-profile');
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    const savedUser = localStorage.getItem('nova-auth-user');
+    if (savedUser) {
+      try {
+        const u = JSON.parse(savedUser);
+        return {
+          name: u.name || 'RAM SAKAL',
+          email: u.email || 'rammilan.kumar7678@gmail.com',
+          role: u.role === 'super_admin' ? 'Super Admin' : u.role === 'co_admin' ? 'Co-Admin' : 'Student',
+          institution: u.institution || 'Nova Intel HQ',
+          streak: 7,
+          xp: 450,
+          completedQuizzes: [],
+          savedResumes: []
+        };
+      } catch (e) {}
+    }
     return {
-      name: 'RAM SAKAL',
-      email: 'rammilan.kumar7678@gmail.com',
-      role: 'Super Admin',
-      institution: 'Nova Intel HQ',
+      name: 'Scholar Student',
+      email: 'student@nova.edu',
+      role: 'Student',
+      institution: 'Nova Intel Academy',
       streak: 7,
       xp: 450,
       completedQuizzes: [],
@@ -480,7 +528,7 @@ export default function App() {
 
               {/* Subcategories listings */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {Object.entries(SUBCATEGORIES)
+                {Object.entries(allSubcategories)
                   .filter(([_, data]) => categoryFilter === 'all' || data.parent === categoryFilter)
                   .map(([slug, data]) => (
                     <button
@@ -513,7 +561,7 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {FEATURED_ARTICLES.slice(0, 3).map((article) => (
+                {allArticles.slice(0, 3).map((article) => (
                   <div
                     key={article.id}
                     className="bg-white dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:scale-[1.01] transition-transform"
@@ -759,7 +807,7 @@ export default function App() {
 
         {/* 5. ACADEMIC SYLLABUS PORTAL (COURSE DETAILS) */}
         {activeView === 'course' && (() => {
-          const course = getCourseForSubcategory(activeSubcategory);
+          const course = serverCourses.find(c => c.id === activeSubcategory || c.subcategory === activeSubcategory) || getCourseForSubcategory(activeSubcategory);
           const hasBookmarked = bookmarks.some(b => b.id === activeSubcategory && b.type === 'course');
           
           return (
@@ -1036,7 +1084,7 @@ export default function App() {
 
         {/* 6. EXTENDED ARTICLE DETAIL SCREEN */}
         {activeView === 'article' && (() => {
-          const art = FEATURED_ARTICLES.find(a => a.id === activeArticleId) || FEATURED_ARTICLES[0];
+          const art = allArticles.find(a => a.id === activeArticleId) || allArticles[0] || FEATURED_ARTICLES[0];
           const hasBookmarked = bookmarks.some(b => b.id === art.id && b.type === 'article');
 
           return (
@@ -1370,6 +1418,147 @@ export default function App() {
           </div>
         )}
 
+        {/* 13.5 STUDY MATERIALS, NOTES & PDF REPOSITORY */}
+        {activeView === 'materials' && (() => {
+          const filtered = serverMaterials.filter(mat => {
+            const matchesCat = materialsCategoryFilter === 'all' || mat.category === materialsCategoryFilter;
+            const matchesSearch = !materialsSearchQuery.trim() ||
+              mat.title.toLowerCase().includes(materialsSearchQuery.toLowerCase()) ||
+              mat.description.toLowerCase().includes(materialsSearchQuery.toLowerCase());
+            return matchesCat && matchesSearch;
+          });
+
+          return (
+            <div className="space-y-8 animate-fade-in max-w-5xl mx-auto">
+              <Breadcrumbs items={[{ label: 'Study Materials & Notes' }]} />
+
+              <div className="bg-gradient-to-r from-zinc-900 via-indigo-950 to-zinc-900 text-white p-6 sm:p-8 rounded-3xl border border-zinc-800 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div className="space-y-2">
+                  <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 text-[11px] font-bold border border-indigo-500/30">
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Official Academic Handbooks & Lecture Notes</span>
+                  </div>
+                  <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight">
+                    Engineering Notes & PDF Repository
+                  </h1>
+                  <p className="text-xs text-zinc-300 max-w-xl">
+                    High-yield handwritten formula sheets, GATE/JEE solved papers, university syllabi, and official laboratory handbooks.
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleNavigate('admin')}
+                    className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs transition shadow-md cursor-pointer flex items-center space-x-1.5"
+                  >
+                    <span>Upload Notes (Admin)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Filters & Search */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="relative w-full sm:w-80">
+                  <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={materialsSearchQuery}
+                    onChange={(e) => setMaterialsSearchQuery(e.target.value)}
+                    placeholder="Search materials, subjects..."
+                    className="w-full pl-9 pr-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs outline-none focus:border-indigo-500 text-zinc-800 dark:text-zinc-200"
+                  />
+                </div>
+
+                <div className="flex bg-zinc-100 dark:bg-zinc-900 p-1 rounded-xl overflow-x-auto max-w-full space-x-1">
+                  {['all', 'engineering', 'programming', 'exams', 'science'].map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setMaterialsCategoryFilter(cat)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        materialsCategoryFilter === cat
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300'
+                      }`}
+                    >
+                      {cat.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Materials Grid */}
+              {filtered.length === 0 ? (
+                <div className="text-center py-12 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 p-8 space-y-3">
+                  <FileText className="w-12 h-12 text-zinc-400 mx-auto" />
+                  <h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200">No study materials matching filter</h3>
+                  <p className="text-xs text-zinc-400">Try changing your search keywords or category filters.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filtered.map((mat) => (
+                    <div
+                      key={mat.id}
+                      className="bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 rounded-2xl p-5 shadow-sm hover:border-indigo-500/50 transition flex flex-col justify-between space-y-4"
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                            {mat.type || 'PDF'}
+                          </span>
+                          <span className="text-[10px] text-zinc-400 font-mono">
+                            {mat.fileSize || 'Verified Note'}
+                          </span>
+                        </div>
+                        <h3 className="text-sm font-extrabold text-zinc-900 dark:text-zinc-50 line-clamp-2">
+                          {mat.title}
+                        </h3>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-3 leading-relaxed">
+                          {mat.description}
+                        </p>
+                      </div>
+
+                      <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between text-xs">
+                        <span className="text-[10px] text-zinc-400">
+                          By: <strong className="text-zinc-600 dark:text-zinc-300">{mat.author}</strong>
+                        </span>
+                        {mat.fileUrl ? (
+                          <a
+                            href={mat.fileUrl}
+                            download
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center space-x-1 shadow-sm transition"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download</span>
+                          </a>
+                        ) : mat.externalUrl ? (
+                          <a
+                            href={mat.externalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs flex items-center space-x-1 shadow-sm transition"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>Open</span>
+                          </a>
+                        ) : (
+                          <button
+                            onClick={() => triggerShare(mat.title)}
+                            className="px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold text-xs"
+                          >
+                            Bookmark
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* 14. ADMIN & CO-ADMIN MONITORING PORTAL */}
         {activeView === 'admin' && (
           <AdminPortal
@@ -1436,6 +1625,7 @@ export default function App() {
       <AdminAuthModal
         isOpen={isAdminAuthModalOpen}
         onClose={() => setIsAdminAuthModalOpen(false)}
+        onOpenApplyModal={() => setIsApplyModalOpen(true)}
         onLoginSuccess={(user) => {
           setCurrentUser(user);
           localStorage.setItem('nova-auth-user', JSON.stringify(user));
@@ -1447,6 +1637,12 @@ export default function App() {
             institution: user.institution || prev.institution
           }));
         }}
+      />
+
+      {/* Co-Admin & Faculty Application Modal */}
+      <CoAdminApplicationModal
+        isOpen={isApplyModalOpen}
+        onClose={() => setIsApplyModalOpen(false)}
       />
     </div>
   );

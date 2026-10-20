@@ -5,7 +5,8 @@ import {
   Download, ArrowUpRight, Check, X, ChevronRight, LogOut, Clock,
   Smartphone, Monitor, Laptop, Globe, UserCheck, UserX, Settings,
   Sparkles, FileText, Award, Layers, Terminal, Edit3, Save, Crown,
-  Sliders, ToggleLeft, ToggleRight, Fingerprint, ShieldCheck, Database, Zap
+  Sliders, ToggleLeft, ToggleRight, Fingerprint, ShieldCheck, Database, Zap,
+  Copy, Share2, Briefcase
 } from 'lucide-react';
 import ContentDatabaseCMS from './ContentDatabaseCMS';
 import OrgHierarchyTree from './OrgHierarchyTree';
@@ -106,8 +107,9 @@ export default function AdminPortal({ currentUser, onNavigate, onOpenAuthModal, 
   // Edit permissions modal
   const [editingUser, setEditingUser] = useState<AuthUser | null>(null);
 
-  // Security Gatekeeper PIN states
+  // Security Gatekeeper PIN & Password states
   const [securityPinInput, setSecurityPinInput] = useState('');
+  const [securityPasswordInput, setSecurityPasswordInput] = useState('');
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
 
@@ -115,11 +117,15 @@ export default function AdminPortal({ currentUser, onNavigate, onOpenAuthModal, 
   const isCoAdmin = currentUser?.role === 'co_admin';
   const isAuthorizedAdmin = isSuperAdmin || isCoAdmin;
 
-  // Handler: Unlock with Master Security PIN
+  // Handler: Unlock with Master Security PIN & Required Password
   const handleUnlockWithPin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!securityPasswordInput.trim()) {
+      setPinError('सुरक्षा नियम: सुपर चीफ एडमिन बिना पासवर्ड के प्रवेश नहीं कर सकते (Password is required)');
+      return;
+    }
     if (!securityPinInput.trim()) {
-      setPinError('Please enter the Master Security PIN');
+      setPinError('कृपया मास्टर सिक्योरिटी पिन दर्ज करें (Please enter Master PIN)');
       return;
     }
     setIsVerifyingPin(true);
@@ -128,20 +134,24 @@ export default function AdminPortal({ currentUser, onNavigate, onOpenAuthModal, 
       const res = await fetch('/api/admin/verify-pin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: securityPinInput.trim() })
+        body: JSON.stringify({
+          pin: securityPinInput.trim(),
+          password: securityPasswordInput.trim()
+        })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Access Denied: Invalid Security Key');
+      if (!res.ok) throw new Error(data.error || 'Access Denied: Invalid Security Key or Password');
 
       if (onUpdateSuperAdminProfile && data.user) {
         onUpdateSuperAdminProfile(data.user);
       }
       showNotification('Super Admin Master Clearance Verified! Welcome back.', 'success');
       setSecurityPinInput('');
+      setSecurityPasswordInput('');
       fetchUsers();
       fetchLogs();
     } catch (err: any) {
-      setPinError(err.message || 'Invalid PIN. Authorized Super Admin only.');
+      setPinError(err.message || 'Invalid PIN or Password. Authorized Super Admin only.');
     } finally {
       setIsVerifyingPin(false);
     }
@@ -531,31 +541,46 @@ export default function AdminPortal({ currentUser, onNavigate, onOpenAuthModal, 
             </button>
           )}
 
-          {/* Master PIN Unlock Section */}
+          {/* Master PIN & Password Unlock Section */}
           <form onSubmit={handleUnlockWithPin} className="space-y-3 p-4 rounded-2xl border border-indigo-500/30 bg-indigo-500/5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-indigo-950 dark:text-indigo-200 flex items-center space-x-1.5">
-                <Key className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Master Security PIN (मास्टर सुरक्षा पिन)</span>
-              </label>
-              <button
-                type="button"
-                onClick={() => setSecurityPinInput('7678')}
-                className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-zinc-800 px-2 py-0.5 rounded border border-indigo-300 dark:border-indigo-700 hover:bg-indigo-50 cursor-pointer"
-              >
-                Auto-fill PIN: 7678
-              </button>
+            <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] flex items-center space-x-1.5">
+              <Shield className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+              <span>
+                <strong>सुरक्षा नीति:</strong> सुपर चीफ एडमिन बिना पासवर्ड के प्रवेश नहीं कर सकते। पिन और पासवर्ड दोनों दर्ज करें।
+              </span>
             </div>
 
-            <div className="relative">
-              <input
-                type="password"
-                maxLength={8}
-                value={securityPinInput}
-                onChange={(e) => setSecurityPinInput(e.target.value)}
-                placeholder="Enter Master PIN (e.g. 7678)"
-                className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900 border border-indigo-300 dark:border-indigo-700 rounded-xl text-center font-mono tracking-widest text-base text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+            <div>
+              <label className="text-xs font-bold text-indigo-950 dark:text-indigo-200 flex items-center space-x-1.5 mb-1.5">
+                <Lock className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Super Admin Password (सुपर एडमिन पासवर्ड) *</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="password"
+                  value={securityPasswordInput}
+                  onChange={(e) => setSecurityPasswordInput(e.target.value)}
+                  placeholder="सुपर एडमिन पासवर्ड दर्ज करें"
+                  className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900 border border-indigo-300 dark:border-indigo-700 rounded-xl text-center text-sm text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-indigo-950 dark:text-indigo-200 flex items-center space-x-1.5 mb-1.5">
+                <Key className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Master Security PIN (मास्टर सुरक्षा पिन) *</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="password"
+                  maxLength={8}
+                  value={securityPinInput}
+                  onChange={(e) => setSecurityPinInput(e.target.value)}
+                  placeholder="मास्टर पिन (उदा. 7678)"
+                  className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900 border border-indigo-300 dark:border-indigo-700 rounded-xl text-center font-mono tracking-widest text-base text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
             </div>
 
             {pinError && (
@@ -567,11 +592,11 @@ export default function AdminPortal({ currentUser, onNavigate, onOpenAuthModal, 
 
             <button
               type="submit"
-              disabled={isVerifyingPin || !securityPinInput.trim()}
+              disabled={isVerifyingPin || !securityPinInput.trim() || !securityPasswordInput.trim()}
               className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/30 transition-all cursor-pointer flex items-center justify-center space-x-2 disabled:opacity-50"
             >
               <Lock className="w-4 h-4" />
-              <span>{isVerifyingPin ? 'Verifying Clearance...' : 'Verify PIN & Unlock Super Admin (RAM SAKAL)'}</span>
+              <span>{isVerifyingPin ? 'Verifying Clearance...' : 'Verify Password + PIN & Unlock Super Admin'}</span>
             </button>
           </form>
 

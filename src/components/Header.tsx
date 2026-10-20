@@ -214,6 +214,7 @@ export default function Header({
                 <span>Dashboard</span>
               </button>
               <button onClick={() => onNavigate('tools')} className="px-3 py-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Tools</button>
+              <button onClick={() => onNavigate('materials')} className="px-3 py-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Notes & PDFs</button>
               <button onClick={() => onNavigate('about')} className="px-3 py-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">About</button>
               <button onClick={() => onNavigate('contact')} className="px-3 py-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Contact</button>
 

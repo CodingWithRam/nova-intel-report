@@ -15,7 +15,9 @@ import {
   X,
   UserCheck,
   Zap,
-  HelpCircle
+  HelpCircle,
+  ShieldAlert,
+  ShieldCheck
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -40,7 +42,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
   const [adminPassword, setAdminPassword] = useState('');
   const [adminPin, setAdminPin] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [authMethod, setAuthMethod] = useState<'password' | 'pin' | 'otp'>('pin');
+  const [authMethod, setAuthMethod] = useState<'password' | 'pin' | 'otp'>('password');
 
   // OTP Login & Reset State
   const [otpTarget, setOtpTarget] = useState('7678829509');
@@ -108,9 +110,13 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
     }
   };
 
-  // 1. Super Admin PIN Login
+  // 1. Super Admin PIN Login (Requires Password as well for strict multi-factor security)
   const handlePinLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!adminPassword.trim()) {
+      setError('सुरक्षा नीति: सुपर चीफ एडमिन भी बिना पासवर्ड के लॉगिन नहीं कर सकते। कृपया पासवर्ड दर्ज करें (Password is required).');
+      return;
+    }
     if (!adminPin.trim()) {
       setError('कृपया 4-अंकों का मास्टर सिक्योरिटी पिन दर्ज करें (Please enter Master PIN).');
       return;
@@ -121,10 +127,14 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
       const res = await fetch('/api/admin/verify-pin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: adminPin.trim() })
+        body: JSON.stringify({
+          pin: adminPin.trim(),
+          password: adminPassword.trim(),
+          email: adminIdentifier.trim()
+        })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'अमान्य सुरक्षा पिन');
+      if (!res.ok) throw new Error(data.error || 'अमान्य सुरक्षा पिन या पासवर्ड');
 
       const user: User = {
         ...data.user,
@@ -394,21 +404,28 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                 </div>
               </div>
 
-              {/* Method A: Master PIN */}
+              {/* Method A: Master PIN + Password (Strict No-Bypass) */}
               {authMethod === 'pin' && (
                 <form onSubmit={handlePinLogin} className="space-y-4">
+                  <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center space-x-2">
+                    <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400" />
+                    <span>
+                      <strong>सुरक्षा नियम:</strong> सुपर चीफ एडमिन भी बिना पासवर्ड के लॉगिन नहीं कर सकते। कृपया मास्टर पिन और पासवर्ड दोनों दर्ज करें।
+                    </span>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                      सुपर एडमिन मास्टर सिक्योरिटी पिन (Master Security PIN)
+                      सुपर चीफ एडमिन पासवर्ड (Password - अनिवार्य)
                     </label>
                     <div className="relative">
                       <Lock className="w-4 h-4 text-amber-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
                         type={showPassword ? 'text' : 'password'}
-                        value={adminPin}
-                        onChange={e => setAdminPin(e.target.value)}
-                        placeholder="डिफ़ॉल्ट सिक्योरिटी पिन: 7678"
-                        className="w-full pl-10 pr-12 py-3 rounded-xl bg-zinc-900 border border-zinc-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm font-mono tracking-wider text-white"
+                        value={adminPassword}
+                        onChange={e => setAdminPassword(e.target.value)}
+                        placeholder="सुपर एडमिन पासवर्ड दर्ज करें"
+                        className="w-full pl-10 pr-12 py-3 rounded-xl bg-zinc-900 border border-zinc-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm text-white"
                         autoFocus
                       />
                       <button
@@ -421,15 +438,20 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200/90 flex items-center justify-between">
-                    <span>त्वरित सत्यापन पिन: <strong className="font-mono text-amber-400">7678</strong></span>
-                    <button
-                      type="button"
-                      onClick={() => setAdminPin('7678')}
-                      className="px-2.5 py-1 bg-amber-500 text-black font-black text-[11px] rounded-lg hover:bg-amber-400 transition-colors"
-                    >
-                      ऑटो-भरें (Auto-Fill)
-                    </button>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                      मास्टर सिक्योरिटी पिन (Master Security PIN)
+                    </label>
+                    <div className="relative">
+                      <ShieldCheck className="w-4 h-4 text-amber-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="password"
+                        value={adminPin}
+                        onChange={e => setAdminPin(e.target.value)}
+                        placeholder="मास्टर सिक्योरिटी पिन (उदा. 7678)"
+                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-zinc-900 border border-zinc-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm font-mono tracking-wider text-white"
+                      />
+                    </div>
                   </div>
 
                   <button
@@ -441,7 +463,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                       <RefreshCw className="w-4 h-4 animate-spin" />
                     ) : (
                       <>
-                        <span>सुपर एडमिन टर्मिनल अनलॉक करें (Unlock Terminal)</span>
+                        <span>सत्यापित करें और टर्मिनल अनलॉक करें (Unlock Terminal)</span>
                         <ArrowRight className="w-4 h-4" />
                       </>
                     )}
@@ -471,30 +493,6 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                         placeholder="7678829509 या rammilan.kumar7678@gmail.com"
                         className="w-full pl-10 pr-4 py-3 rounded-xl bg-zinc-900 border border-zinc-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm text-white"
                       />
-                    </div>
-                    <div className="flex gap-2 mt-1.5 text-[11px] text-zinc-400">
-                      <span>क्विक सेलेक्ट:</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAdminIdentifier('7678829509');
-                          setAdminPassword('password7678');
-                        }}
-                        className="text-amber-400 hover:underline font-mono"
-                      >
-                        Mobile (+91 7678829509)
-                      </button>
-                      <span>•</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAdminIdentifier('rammilan.kumar7678@gmail.com');
-                          setAdminPassword('password7678');
-                        }}
-                        className="text-amber-400 hover:underline font-mono"
-                      >
-                        Email
-                      </button>
                     </div>
                   </div>
 

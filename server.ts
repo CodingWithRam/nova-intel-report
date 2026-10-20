@@ -579,21 +579,21 @@ app.post('/api/auth/verify-otp', (req, res) => {
     const digitsOnly = target.replace(/\D/g, '').slice(-10);
     const cleanOtp = otp.trim();
 
-    // Check stored OTP or standard developer preview bypass (123456 or 767800)
+    // Check stored OTP strictly (no static bypass)
     const stored = otpStore.get(cleanTarget) || (digitsOnly ? otpStore.get(digitsOnly) : undefined);
-    const isMasterPreviewOtp = cleanOtp === '123456' || cleanOtp === '767800';
 
-    if (!stored && !isMasterPreviewOtp) {
-      return res.status(400).json({ error: 'Invalid or expired OTP. Please request a new OTP.' });
+    if (!stored) {
+      return res.status(400).json({ error: 'अमान्य या समाप्त हो चुका ओटीपी। कृपया नया ओटीपी प्राप्त करें (Invalid or expired OTP).' });
     }
 
-    if (stored && stored.code !== cleanOtp && !isMasterPreviewOtp) {
-      return res.status(400).json({ error: 'Incorrect OTP entered. Please check and try again.' });
-    }
-
-    if (stored && Date.now() > stored.expiresAt && !isMasterPreviewOtp) {
+    if (Date.now() > stored.expiresAt) {
       otpStore.delete(cleanTarget);
-      return res.status(400).json({ error: 'OTP has expired. Please request a fresh OTP.' });
+      if (digitsOnly) otpStore.delete(digitsOnly);
+      return res.status(400).json({ error: 'ओटीपी की समय सीमा समाप्त हो गई है (OTP has expired). कृपया नया ओटीपी मांगें।' });
+    }
+
+    if (stored.code !== cleanOtp) {
+      return res.status(400).json({ error: 'गलत ओटीपी दर्ज किया गया है (Incorrect OTP entered). कृपया पुनः प्रयास करें।' });
     }
 
     // OTP Validated! Clean up store
@@ -606,34 +606,28 @@ app.post('/api/auth/verify-otp', (req, res) => {
            (u.phone && u.phone.replace(/\D/g, '').includes(digitsOnly))
     );
 
-    const isSuperAdminTarget = cleanTarget.includes('7678') ||
-      cleanTarget === 'rammilan.kumar7678@gmail.com' ||
-      cleanTarget.includes('rammilan') ||
-      cleanTarget.includes('ramsakal') ||
-      digitsOnly === '7678829509';
-
     if (!user) {
-      // Create new user account automatically with verified credentials
+      // Create new user account automatically with verified credentials as STUDENT
       const isEmail = cleanTarget.includes('@');
       user = {
-        id: isSuperAdminTarget ? 'usr-super-admin' : `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        name: (name && name.trim()) ? name.trim() : (isSuperAdminTarget ? 'RAM SAKAL' : (isEmail ? cleanTarget.split('@')[0] : `User ${digitsOnly || 'Member'}`)),
-        email: isEmail ? cleanTarget : `${digitsOnly || 'user'}@nova.member.edu`,
-        phone: !isEmail ? target : (isSuperAdminTarget ? '+91 7678829509' : undefined),
+        id: `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        name: (name && name.trim()) ? name.trim() : (isEmail ? cleanTarget.split('@')[0] : `User ${digitsOnly || 'Member'}`),
+        email: isEmail ? cleanTarget : `${digitsOnly || 'user'}@nova.student.edu`,
+        phone: !isEmail ? target : undefined,
         password: password ? password.trim() : undefined,
         authProvider: !isEmail ? 'phone' : 'email',
-        role: isSuperAdminTarget ? 'super_admin' : 'student',
+        role: 'student',
         status: 'active',
-        department: department?.trim() || (isSuperAdminTarget ? 'Executive Administration & Systems' : 'General Engineering'),
-        institution: institution?.trim() || (isSuperAdminTarget ? 'Nova Intel HQ' : 'Engineering College'),
-        permissions: isSuperAdminTarget ? [...ALL_PERMISSIONS] : [],
-        assignedBy: isSuperAdminTarget ? 'Root Authority' : 'OTP Verified Self-Registration',
+        department: department?.trim() || 'General Engineering',
+        institution: institution?.trim() || 'Engineering College',
+        permissions: [],
+        assignedBy: 'OTP Verified Self-Registration',
         createdAt: new Date().toISOString(),
         lastLoginAt: new Date().toISOString(),
         loginCount: 1,
         lastIp: (req.headers['x-forwarded-for'] as string) || '127.0.0.1',
         isNameVisible: true,
-        publicTitle: 'Chief Administrator'
+        publicTitle: 'Student Scholar'
       };
       usersStore.push(user);
 
@@ -682,16 +676,21 @@ app.post('/api/auth/reset-password', (req, res) => {
     const digitsOnly = target.replace(/\D/g, '').slice(-10);
     const cleanOtp = otp.trim();
 
-    // Check stored OTP or preview master test bypass (123456 or 767800)
+    // Check stored OTP strictly (no master test bypass)
     const stored = otpStore.get(cleanTarget) || (digitsOnly ? otpStore.get(digitsOnly) : undefined);
-    const isMasterPreviewOtp = cleanOtp === '123456' || cleanOtp === '767800';
 
-    if (!stored && !isMasterPreviewOtp) {
-      return res.status(400).json({ error: 'Invalid or expired OTP. Please request a fresh OTP.' });
+    if (!stored) {
+      return res.status(400).json({ error: 'अमान्य या समाप्त हो चुका ओटीपी कोड (Invalid or expired OTP).' });
     }
 
-    if (stored && stored.code !== cleanOtp && !isMasterPreviewOtp) {
-      return res.status(400).json({ error: 'Incorrect OTP code entered. Please check and try again.' });
+    if (Date.now() > stored.expiresAt) {
+      otpStore.delete(cleanTarget);
+      if (digitsOnly) otpStore.delete(digitsOnly);
+      return res.status(400).json({ error: 'ओटीपी की वैधता समाप्त हो चुकी है। कृपया नया ओटीपी प्राप्त करें।' });
+    }
+
+    if (stored.code !== cleanOtp) {
+      return res.status(400).json({ error: 'गलत ओटीपी कोड दर्ज किया गया है (Incorrect OTP code).' });
     }
 
     otpStore.delete(cleanTarget);
@@ -702,18 +701,8 @@ app.post('/api/auth/reset-password', (req, res) => {
            (u.phone && digitsOnly && u.phone.replace(/\D/g, '').includes(digitsOnly))
     );
 
-    const isSuperAdminMatch = cleanTarget.includes('7678') ||
-      cleanTarget === 'rammilan.kumar7678@gmail.com' ||
-      cleanTarget.includes('rammilan') ||
-      cleanTarget.includes('ramsakal') ||
-      digitsOnly === '7678829509';
-
-    if (!user && isSuperAdminMatch) {
-      user = usersStore.find(u => u.role === 'super_admin') || usersStore[0];
-    }
-
     if (!user) {
-      return res.status(404).json({ error: 'User account not found for this identifier.' });
+      return res.status(404).json({ error: 'इस पहचानकर्ता के लिए कोई खाता नहीं मिला (Account not found).' });
     }
 
     user.password = newPassword.trim();
@@ -759,11 +748,8 @@ app.post('/api/auth/login', (req, res) => {
            (u.phone && digitsOnly && u.phone.replace(/\D/g, '').includes(digitsOnly))
     );
 
-    // If target matches RAM SAKAL, ensure they are always super_admin
+    // Strict identity check for root super admin: exact email or exact 10-digit phone only
     const isSuperAdminMatch = cleanTarget === 'rammilan.kumar7678@gmail.com' ||
-      cleanTarget.includes('7678') ||
-      cleanTarget.includes('rammilan') ||
-      cleanTarget.includes('ramsakal') ||
       digitsOnly === '7678829509';
 
     if (isSuperAdminMatch) {
@@ -805,12 +791,29 @@ app.post('/api/auth/login', (req, res) => {
       return res.status(403).json({ error: 'This account has been suspended by the Super Admin.' });
     }
 
-    // Password validation (if user has a set password and password was provided)
-    if (password && user.password) {
-      const isMasterAdminPass = password === 'admin7678' || password === 'password7678' || password === '7678';
-      if (user.password !== password && !isMasterAdminPass) {
-        return res.status(401).json({ error: 'Incorrect password. You can also sign in using OTP.' });
-      }
+    // Strict Password Validation: Super Chief Admin and all users CANNOT login without password
+    if (!password || typeof password !== 'string' || !password.trim()) {
+      return res.status(400).json({
+        error: 'पासवर्ड दर्ज करना अनिवार्य है। बिना पासवर्ड के सुपर चीफ एडमिन या अन्य कोई यूजर लॉगिन नहीं कर सकता (Password is strictly required to log in).'
+      });
+    }
+
+    const cleanPassword = password.trim();
+
+    // Verify against user's stored password (strict equality, no static master backdoors)
+    if (user.password && user.password !== cleanPassword) {
+      return res.status(401).json({
+        error: user.role === 'super_admin'
+          ? 'सुपर चीफ एडमिन पासवर्ड गलत है (Incorrect Super Admin password).'
+          : 'गलत पासवर्ड दर्ज किया गया है (Incorrect password).'
+      });
+    }
+
+    if (!user.password) {
+      // If user had no password set, reject direct password login
+      return res.status(400).json({
+        error: 'इस खाते पर पासवर्ड सेट नहीं है। कृपया ओटीपी के माध्यम से लॉगिन करें या पासवर्ड रिसेट करें।'
+      });
     }
 
     user.lastLoginAt = new Date().toISOString();
@@ -852,26 +855,26 @@ app.post('/api/auth/register', (req, res) => {
       return res.status(409).json({ error: 'An account with this Email or Mobile number already exists. Please sign in.' });
     }
 
-    const isSuperAdminEmail = cleanEmail === 'rammilan.kumar7678@gmail.com' || cleanEmail.includes('7678') || digitsOnly === '7678829509';
+    // Strict: New public registrations are ALWAYS student role. No self-promotion by email pattern.
     const newUser: StoredUser = {
-      id: isSuperAdminEmail ? 'usr-super-admin' : `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      id: `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       name: name.trim(),
       email: cleanEmail || `${digitsOnly || 'user'}@nova.student.edu`,
       phone: cleanPhone || undefined,
       password: password ? password.trim() : undefined,
       authProvider,
-      role: isSuperAdminEmail ? 'super_admin' : 'student',
+      role: 'student',
       status: 'active',
-      department: department?.trim() || (isSuperAdminEmail ? 'Executive Administration & Systems' : 'General Engineering'),
-      institution: institution?.trim() || (isSuperAdminEmail ? 'Nova Intel HQ' : 'Engineering College'),
-      permissions: isSuperAdminEmail ? [...ALL_PERMISSIONS] : [],
-      assignedBy: isSuperAdminEmail ? 'Root Authority' : 'Self Registered',
+      department: department?.trim() || 'General Engineering',
+      institution: institution?.trim() || 'Engineering College',
+      permissions: [],
+      assignedBy: 'Self Registered',
       createdAt: new Date().toISOString(),
       lastLoginAt: new Date().toISOString(),
       loginCount: 1,
       lastIp: (req.headers['x-forwarded-for'] as string) || '127.0.0.1',
       isNameVisible: true,
-      publicTitle: 'Chief Administrator'
+      publicTitle: 'Student Scholar'
     };
 
     usersStore.push(newUser);
@@ -902,7 +905,7 @@ app.post('/api/auth/oauth-login', (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
     let user = usersStore.find(u => u.email.toLowerCase() === cleanEmail);
 
-    const isSuperAdmin = cleanEmail === 'rammilan.kumar7678@gmail.com' || cleanEmail.includes('7678');
+    const isSuperAdmin = cleanEmail === 'rammilan.kumar7678@gmail.com';
 
     if (!user) {
       user = {
@@ -916,13 +919,13 @@ app.post('/api/auth/oauth-login', (req, res) => {
         department: isSuperAdmin ? 'Executive Administration & Systems' : 'General Engineering',
         institution: isSuperAdmin ? 'Nova Intel HQ' : 'Engineering Academy',
         permissions: isSuperAdmin ? [...ALL_PERMISSIONS] : [],
-        assignedBy: `OAuth ${provider.toUpperCase()}`,
+        assignedBy: isSuperAdmin ? 'Root Authority' : `OAuth ${provider.toUpperCase()}`,
         createdAt: new Date().toISOString(),
         lastLoginAt: new Date().toISOString(),
         loginCount: 1,
         lastIp: (req.headers['x-forwarded-for'] as string) || '127.0.0.1',
         isNameVisible: true,
-        publicTitle: 'Chief Administrator'
+        publicTitle: isSuperAdmin ? 'Chief Administrator' : 'Student Scholar'
       };
       usersStore.push(user);
 
@@ -961,21 +964,38 @@ app.post('/api/auth/oauth-login', (req, res) => {
 // 6. Super Admin Security Key / PIN Verification Endpoint
 app.post('/api/admin/verify-pin', (req, res) => {
   try {
-    const { pin, email } = req.body;
+    const { pin, password, email } = req.body;
+    
+    // Strict requirement: Neither Super Chief Admin nor anyone can login without password
+    if (!password || typeof password !== 'string' || !password.trim()) {
+      return res.status(400).json({
+        error: 'सुरक्षा नियम: सुपर चीफ एडमिन भी बिना पासवर्ड के लॉगिन नहीं कर सकते। कृपया पासवर्ड दर्ज करें (Super Chief Admin cannot log in without password).'
+      });
+    }
+
     if (!pin) {
-      return res.status(400).json({ error: 'Security PIN is required.' });
+      return res.status(400).json({ error: 'मास्टर सिक्योरिटी पिन दर्ज करना अनिवार्य है (Security PIN is required).' });
     }
 
     const cleanPin = pin.toString().trim();
-    const isMasterPin = cleanPin === '7678' || cleanPin === 'nova2026' || cleanPin === '123456';
+    // Valid security PINs
+    const isMasterPin = cleanPin === '7678' || cleanPin === 'nova2026';
 
     if (!isMasterPin) {
-      return res.status(403).json({ error: 'Incorrect Super Admin Security PIN. Access Denied.' });
+      return res.status(403).json({ error: 'अमान्य सुपर एडमिन सिक्योरिटी पिन। एक्सेस अस्वीकृत (Incorrect Security PIN).' });
     }
 
     let superAdmin = usersStore.find(u => u.role === 'super_admin' || u.email === 'rammilan.kumar7678@gmail.com');
     if (!superAdmin) {
       superAdmin = usersStore[0];
+    }
+
+    // Strict Password Verification
+    const cleanPassword = password.trim();
+    if (!superAdmin.password || superAdmin.password !== cleanPassword) {
+      return res.status(401).json({
+        error: 'सुपर चीफ एडमिन पासवर्ड गलत है (Incorrect Super Admin password).'
+      });
     }
 
     superAdmin.lastLoginAt = new Date().toISOString();
@@ -984,7 +1004,7 @@ app.post('/api/admin/verify-pin', (req, res) => {
     recordAuditLog(
       superAdmin,
       'admin_pin_verified',
-      `Super Admin portal unlocked via Master Security Key/PIN`,
+      `Super Admin portal unlocked with authenticated PIN + Password verification`,
       req,
       'success'
     );
@@ -992,16 +1012,20 @@ app.post('/api/admin/verify-pin', (req, res) => {
     res.json({
       authorized: true,
       user: superAdmin,
-      message: 'Super Admin clearance verified! Full administrative access granted.'
+      message: 'सुपर चीफ एडमिन सत्यापन सफल! पूर्ण प्रशासनिक पहुंच प्रदान की गई।'
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'PIN verification failed' });
   }
 });
 
-// 3. Admin: Get all users & co-admins
+// 3. Admin: Get all users & co-admins (Sanitized to never expose passwords)
 app.get('/api/admin/users', (req, res) => {
-  res.json({ users: usersStore });
+  const safeUsers = usersStore.map(({ password, ...u }) => ({
+    ...u,
+    hasPassword: Boolean(password)
+  }));
+  res.json({ users: safeUsers });
 });
 
 // 4. Admin: Create a new Co-Admin or Worker (Super Admin Exclusive)
